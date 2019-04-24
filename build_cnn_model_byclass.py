@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+作者：Shayne
+程式簡介：使用 class 方式構建卷積網路
+"""
 
 import cv2
 import tensorflow as tf
@@ -62,38 +66,38 @@ class myCNN:
     def build(self):
         # Layers
         # Conv1
-        W_conv1 = self.weight_variable([5, 5, 1, 16])
-        b_conv1 = self.bias_variable([16])
-        y_conv1 = self.conv2d(self.x, W_conv1) + b_conv1
+        self.W_conv1 = self.weight_variable([5, 5, 1, 16])
+        self.b_conv1 = self.bias_variable([16])
+        self.y_conv1 = self.conv2d(self.x, self.W_conv1) + self.b_conv1
         # ReLU1
-        relu1 = tf.nn.relu(y_conv1)
+        self.relu1 = tf.nn.relu(self.y_conv1)
         # Pool1
-        pool1 = self.max_pool_2x2(relu1)    
+        self.pool1 = self.max_pool_2x2(self.relu1)    
         # Conv2
-        W_conv2 = self.weight_variable([3, 3, 16, 32])
-        b_conv2 = self.bias_variable([32])
-        y_conv2 = self.conv2d(pool1, W_conv2) + b_conv2
+        self.W_conv2 = self.weight_variable([3, 3, 16, 32])
+        self.b_conv2 = self.bias_variable([32])
+        self.y_conv2 = self.conv2d(self.pool1, self.W_conv2) + self.b_conv2
         # ReLU2
-        relu2 = tf.nn.relu(y_conv2)      
+        self.relu2 = tf.nn.relu(self.y_conv2)      
         # Pool2
-        pool2 = self.max_pool_2x2(relu2)
+        self.pool2 = self.max_pool_2x2(self.relu2)
         # FC1
-        W_fc1 = self.weight_variable([11*11*32, 128])
-        b_fc1 = self.bias_variable([128])
-        h_flat = tf.reshape(pool2, [-1, 11*11*32])
-        y_fc1 = tf.matmul(h_flat, W_fc1) + b_fc1
+        self.W_fc1 = self.weight_variable([11*11*32, 128])
+        self.b_fc1 = self.bias_variable([128])
+        self.h_flat = tf.reshape(self.pool2, [-1, 11*11*32])
+        self.y_fc1 = tf.matmul(self.h_flat, self.W_fc1) + self.b_fc1
         # ReLU3
-        relu3 = tf.nn.relu(y_fc1)
+        self.relu3 = tf.nn.relu(self.y_fc1)
         # dropout
-        drop = tf.nn.dropout(relu3, self.drop_prop)
+        self.drop = tf.nn.dropout(self.relu3, self.drop_prop)
         # FC2
-        W_fc2 = self.weight_variable([128, self.LABEL_NUM])
-        b_fc2 = self.bias_variable([self.LABEL_NUM])
-        self.y  = tf.matmul(drop, W_fc2) + b_fc2
+        self.W_fc2 = self.weight_variable([128, self.LABEL_NUM])
+        self.b_fc2 = self.bias_variable([self.LABEL_NUM])
+        self.y  = tf.matmul(self.drop, self.W_fc2) + self.b_fc2
         
         # for predict
-        y1 = tf.matmul(relu3, W_fc2) + b_fc2
-        self.y_pred = tf.argmax(tf.nn.softmax(y1), 1)
+        self.y1 = tf.matmul(self.relu3, self.W_fc2) + self.b_fc2
+        self.y_pred = tf.argmax(tf.nn.softmax(self.y1), 1)
         
     def train(self, train_x, train_y):
         
@@ -136,12 +140,31 @@ class myCNN:
             coord.request_stop()
                 
         coord.join(threads)
+
+    # 存檔
+    def save(self, save_path):
+        self.saver = tf.train.Saver()
+        tf.add_to_collection('x', self.x)
+        tf.add_to_collection('y', self.y_pred)
+        self.saver.save(self.sess, save_path)
         
+    # 重建
+    def restore(self, model_path):
+        saver = tf.train.import_meta_graph(model_path+".meta")
+        saver.restore(self.sess, model_path)
+        self.x = tf.get_collection('x')[0]
+        self.y_pred = tf.get_collection('y')[0]
+    
+    # 預測 
     def predict(self, img):
         img = img.reshape(-1,42,42,1)
         result = self.sess.run(self.y_pred, feed_dict={self.x: img})
         return result
-    
+
+# ========================================================================#
+#                              主程式區                                   #
+# ========================================================================#
+        
 filename = './py_Train.tfrecords'
 BATCH_SIZE = 128
 MAX_EPOCH = 20
@@ -152,11 +175,22 @@ img_bat, lb_bat = read_and_decode(filename, BATCH_SIZE, MAX_EPOCH)
 train_x = tf.reshape(img_bat, [-1, 42, 42, 1])
 train_y = tf.one_hot(lb_bat, LABEL_NUM)
 
+# 建模
 Model = myCNN(LABEL_NUM)
 
 Model.build()
 Model.train(train_x, train_y)
 
-I = cv2.imread('D:/Dataset/9/img18.jpg')
+I = cv2.imread('./Dataset/9/img18.jpg')
 A = Model.predict(I[:,:,0]/255)
 print(A)
+
+# 存檔
+Model.save('./model/test_model')
+
+# 重新讀取檔案建模
+Model1 = myCNN(LABEL_NUM)
+Model1.restore('./model/test_model')
+
+B = Model1.predict(I[:,:,0]/255)
+print(B)
